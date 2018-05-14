@@ -18,6 +18,12 @@ behr_dois = {'daily-gridded': 'doi:10.6078/D12D5X',
              'daily-native': 'doi:10.6078/D1WH41',
              'monthly-native': 'doi:10.6078/D1N086'}
 
+"""
+This uses the Dash REST API (https://dash.ucop.edu/api/docs/index.html and 
+https://github.com/CDLUC3/stash/blob/development/stash_api/basic_submission.md) 
+to download files from the above BEHR repositories.
+"""
+
 def replace_ascii_html(s):
     html_table = {':': '%3A',
                   '/': '%2F'}
@@ -43,16 +49,29 @@ def get_dash_files_from_doi(doi):
     if newest_idx < 0:
         raise RuntimeError('Failed to find the newest version')
 
+
     # Assuming that the list of versions is in chronological order, we want the most recent one
-    # In that version is the URL to request the files
+    # In that version get the URL to request the first page of files
     file_url = versions.json()['_embedded']['stash:versions'][newest_idx]['_links']['stash:files']['href']
 
-    # Now we can retrieve a list of the available files
-    file_list = requests.get("{}{}".format(dash_root, file_url), params=request_params).json()['_embedded'][
-        'stash:files']
+    file_dict = dict()
 
-    # Extract the file name and link into a more easily comprehendable dict
-    return {f['path']: dash_root + f['_links']['stash:download']['href'] for f in file_list}
+    while True:
+        file_group = requests.get("{}{}".format(dash_root, file_url), params=request_params).json()
+        # Now we can retrieve a list of the available files
+        file_list = file_group['_embedded']['stash:files']
+
+        # Extract the file name and link into a more easily comprehendable dict
+        file_dict.update({f['path']: dash_root + f['_links']['stash:download']['href'] for f in file_list})
+
+        # The files aren't all returned at once - 10 are listed per "page" so as long as there is a next page, we need
+        # to get the files listed on that page and add them to the dictionary
+        if 'next' in file_group['_links'].keys():
+            file_url = file_group['_links']['next']['href']
+        else:
+            break
+
+    return file_dict
 
 
 def download_file(url, out_name, block_size=default_block_size_bytes):
