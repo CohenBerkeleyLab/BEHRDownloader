@@ -13,7 +13,10 @@ dash_root = "https://dash.ucop.edu"
 request_params = {"accept": "application/json"}
 default_block_size_bytes = 4096
 
-behr_dois = {'daily-gridded': 'doi:10.6078/D12D5X'}
+behr_dois = {'daily-gridded': 'doi:10.6078/D12D5X',
+             'monthly-gridded': 'doi:10.6078/D1RQ3G',
+             'daily-native': 'doi:10.6078/D1WH41',
+             'monthly-native': 'doi:10.6078/D1N086'}
 
 def replace_ascii_html(s):
     html_table = {':': '%3A',
@@ -29,9 +32,20 @@ def get_dash_files_from_doi(doi):
     # First, we get a list of all versions associated with this DOI
     versions = requests.get("{}/api/datasets/{}/versions".format(dash_root, doi), params=request_params)
 
+    # Find the most recent version
+    newest_version = -1
+    newest_idx = -1
+    for idx, a_version in enumerate(versions.json()['_embedded']['stash:versions']):
+        if a_version['versionNumber'] > newest_version:
+            newest_version = a_version['versionNumber']
+            newest_idx = idx
+
+    if newest_idx < 0:
+        raise RuntimeError('Failed to find the newest version')
+
     # Assuming that the list of versions is in chronological order, we want the most recent one
     # In that version is the URL to request the files
-    file_url = versions.json()['_embedded']['stash:versions'][0]['_links']['stash:files']['href']
+    file_url = versions.json()['_embedded']['stash:versions'][newest_idx]['_links']['stash:files']['href']
 
     # Now we can retrieve a list of the available files
     file_list = requests.get("{}{}".format(dash_root, file_url), params=request_params).json()['_embedded'][
@@ -52,11 +66,13 @@ def download_file(url, out_name, block_size=default_block_size_bytes):
             outfile.write(block)
 
 
-def extract_tar_file(filename, delete_tar=False):
+def extract_tar_file(filename, delete_tar=False, verbose=0, logging_fxn=print):
     extract_path = os.path.dirname(filename)
     with tarfile.open(filename, 'r:gz') as tarobj:
         tarobj.extractall(path=extract_path)
     if delete_tar:
+        if verbose > 0:
+            logging_fxn('Deleting {}'.format(filename))
         os.remove(filename)
 
 
@@ -77,7 +93,7 @@ def iter_files_for_dates(filenames, start, end):
                 break  # break the inner loop, assume that there's only one file per month
 
 
-def driver(dataset, out_dir, start, end, extract_tars=False, delete_tar=False, logging_fxn=print, verbose=0, **kwargs):
+def driver(dataset, out_dir, start, end, extract_tar=False, delete_tar=False, logging_fxn=print, verbose=0, **kwargs):
     if not dataset.startswith('doi'):
         try:
             dataset = behr_dois[dataset]
@@ -95,10 +111,10 @@ def driver(dataset, out_dir, start, end, extract_tars=False, delete_tar=False, l
         if verbose > 0:
             logging_fxn('Saving {} as {}'.format(url, save_name))
         download_file(url, save_name)
-        if extract_tars:
+        if extract_tar:
             if verbose > 0:
                 logging_fxn('Extracting {}'.format(save_name))
-            extract_tar_file(save_name, delete_tar=delete_tar)
+            extract_tar_file(save_name, delete_tar=delete_tar, verbose=verbose, logging_fxn=logging_fxn)
 
 
 def parse_cl_date(date_string):
