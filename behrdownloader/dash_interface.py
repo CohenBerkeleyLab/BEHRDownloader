@@ -153,7 +153,7 @@ def parse_args(parser=None):
     parser.add_argument('-o', '--out-dir', default='.', help='Directory to save downloads to. Default is the current directory.')
     parser.add_argument('-e', '--extract-tar', action='store_true', help='Extract the tar files after downloading')
     parser.add_argument('-d', '--delete-tar', action='store_true', help='Delete tar file after extracting. Has no effect without --extract-tar.')
-    parser.add_argument('-v', '--verbose', action='count', help='Increase logging to console.')
+    parser.add_argument('-v', '--verbose', default=0, action='count', help='Increase logging to console.')
     parser.set_defaults(driver_fxn=driver)
 
     if not called_as_subcommand:
